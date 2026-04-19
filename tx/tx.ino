@@ -1,5 +1,4 @@
 #include <SPI.h>
-#include <nRF24L01.h>
 #include <RF24.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -9,36 +8,33 @@
 // Reset pin not used but required for library
 #define RESET_PIN   -1
 
-#define SCREEN_WIDTH 128 // Larghezza del display OLED in pixels
+#define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 32
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT - 1);
 
-int tailR, tailL, mapped_tailR, mapped_tailL;
+int ailerons, engine, pitch, yaw, tailR, tailL;
 
-int j1x = 0;
-int j1y = 0;
-int yaw = 0;
-int pitch = 0;
+int j1x, j1y, j2x, j2y;
 
-int t[1] = {1};
+int t[2] = {0, 0};
 
 #define J1X_PIN  A0
 #define J1Y_PIN  A1
 #define J2X_PIN  A2
 #define J2Y_PIN  A3
 
-char textToSend[32] = {0}; // Increased the size of the buffer to accommodate 4-digit values
+char textToSend[32] = {0};
 
 RF24 radio(7, 8); // CE, CSN
 
 void setup() {
   Serial.begin(9600);
   radio.begin();
-  //radio.setRetries(15, 15);
   radio.openWritingPipe(0xF0F0F0F0E1LL);
   radio.enableAckPayload();
-  radio.setAutoAck(true);
+  radio.setAutoAck(false);
+  radio.setRetries(0, 0);
   radio.stopListening();
 
   // Initialize with the I2C addr 0x3C (for the 128x64)
@@ -51,31 +47,32 @@ void setup() {
 }
 
 void loop() {
-  //const char text[] = "Hello, world!";
-  //radio.write(&text, sizeof(text));
+  j1x = analogRead(J1X_PIN);
+  j1y = analogRead(J1Y_PIN);
+  j2x = analogRead(J2X_PIN);
+  j2y = analogRead(J2Y_PIN);
 
-  j1x = map(analogRead(J1X_PIN), 0, 1023, 80, 30);
-  j1y = map(analogRead(J1Y_PIN), 0, 1023, 0, 180);
-  
-  yaw = map(analogRead(J2X_PIN), 0, 1023, -90, 90);
-  pitch = map(analogRead(J2Y_PIN), 0, 1023, 90, -90);
+  ailerons = map(j1x, 0, 1023, 80, 30);
+  engine  = map(j1y, 0, 1023, 0, 180);
+
+  yaw   = map(j2x, 0, 1023, -90, 90);
+  pitch = map(j2y, 0, 1023,  90, -90);
 
   tailR = pitch - yaw;
   tailL = pitch + yaw;
 
-  mapped_tailL = map(tailL, -90, 90, 180, 0);
-  mapped_tailL = constrain(mapped_tailL, 0, 180);
+  tailR = map(tailR, -90, 90, 0, 180);
+  tailL = map(tailL, -90, 90, 180, 0);
 
-  mapped_tailR = map(tailR, -90, 90, 0, 180);
-  mapped_tailR = constrain(mapped_tailR, 0, 180);
-  
-  // Format the values as fixed-size character arrays
-  snprintf(textToSend, sizeof(textToSend), "%d;%d;%d;%d", j1x, j1y, mapped_tailL, mapped_tailR);
+  tailR = constrain(tailR, 0, 180);
+  tailL = constrain(tailL, 0, 180);
+
+  snprintf(textToSend, sizeof(textToSend), "%d;%d;%d;%d", ailerons, engine, tailL, tailR);
 
   radio.write(&textToSend, sizeof(textToSend));
 
-
-  if (radio.isAckPayloadAvailable()) {
+  if (radio.isAckPayloadAvailable())
+  {
     unsigned long ackPayload;//[32] = "";
     radio.read(&ackPayload, sizeof(ackPayload));
     Serial.println(ackPayload);
@@ -100,7 +97,4 @@ void loop() {
     display.print("NO SIGNAL");
     display.display();
   }
-
-
-  //delay(1000);
 }
